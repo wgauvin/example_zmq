@@ -17,9 +17,6 @@ using namespace std;
     show how to used this in C++ (easier for the threading).
 */
 
-std::string RECEIVE_TOPIC = "interesting_topic";
-std::string RESPONSE_TOPIC = "response_topic";
-
 int main(int argc, char *argv[])
 {
   // "You should create and use exactly one context in your process."
@@ -47,7 +44,7 @@ int main(int argc, char *argv[])
   {
     // The subscriber socket
     // The port number here is the XSUB port of the Msg Proxy service (9210)
-    subscriber.setsockopt(ZMQ_SUBSCRIBE, WELCOME_MESSAGE.c_str(), WELCOME_MESSAGE.length());
+    subscriber.setsockopt(ZMQ_SUBSCRIBE, WELCOME_TOPIC.c_str(), WELCOME_TOPIC.length());
     subscriber.setsockopt(ZMQ_SUBSCRIBE, RECEIVE_TOPIC.c_str(), RECEIVE_TOPIC.length());
     subscriber.connect(sub_transport);
 
@@ -65,49 +62,55 @@ int main(int argc, char *argv[])
 
   // the subscriber thread that returns the same message back to the publisher.
   std::thread subs_thread([&subscriber, &p, &publisher]() {
-    // only need to do this once
-    // zmq::message_t topic_msg(RESPONSE_TOPIC.length());
-    // memcpy(topic_msg.data(), RESPONSE_TOPIC.c_str(), RESPONSE_TOPIC.length());
-
     size_t int_size = sizeof(int);
 
     while (true)
     {
-
       zmq::poll(p.data(), 1, -1);
       if (p[0].revents & ZMQ_POLLIN)
       {
+        // first part of msg is the topic
+        zmq::message_t topic_msg(TOPIC_LENGTH);
+        subscriber.recv(topic_msg, zmq::recv_flags::none);
+        std::string topic_msg_txt;
+        topic_msg_txt.assign(static_cast<char *>(topic_msg.data()), topic_msg.size());
 
-        int recvMore = 1;
+        if (topic_msg_txt == WELCOME_TOPIC) {
+          cout << "[SUBSCRIBER]: Welcome message recved. Okay to do stuff" << endl;
+
+          int recvMore;
+          subscriber.getsockopt(ZMQ_RCVMORE, &recvMore, &int_size);
+          if (recvMore) {
+            cout << "[SUBSCRIBER]: Welcome message has more though!" << endl;
+          }
+
+          continue;
+        }
+
+        int recvMore;
+        subscriber.getsockopt(ZMQ_RCVMORE, &recvMore, &int_size);
         while (recvMore)
         {
           zmq::message_t msg;
           subscriber.recv(msg, zmq::recv_flags::none);
           std::string msg_txt;
           msg_txt.assign(static_cast<char *>(msg.data()), msg.size());
-          cout << "[SUBSCRIBER]: " << msg_txt << endl;
+          cout << "[SUBSCRIBER]: Received '" << msg_txt << "' on request topic" << endl;
 
           subscriber.getsockopt(ZMQ_RCVMORE, &recvMore, &int_size);
-
           if (!recvMore)
           {
-            // This isn't working! 
-            if (msg_txt == "WELCOME")
-            {
-              cout << "[SUBSCRIBER]: Welcome message recved. Okay to do stuff";
-              continue;
-            }
-            zmq::message_t topic_msg(RESPONSE_TOPIC.length());
-            memcpy(topic_msg.data(), RESPONSE_TOPIC.c_str(), RESPONSE_TOPIC.length());
+            zmq::message_t response_topic_msg(RESPONSE_TOPIC.length());
+            memcpy(response_topic_msg.data(), RESPONSE_TOPIC.c_str(), RESPONSE_TOPIC.length());
 
             zmq::message_t ack_msg(3);
-            std::string msg_text = "ACK";
-            memcpy(ack_msg.data(), msg_text.c_str(), msg_text.length());
+            std::string ack_msg_text = "ACK";
+            memcpy(ack_msg.data(), ack_msg_text.c_str(), ack_msg_text.length());
 
-            publisher.send(topic_msg, zmq::send_flags::sndmore);
+            publisher.send(response_topic_msg, zmq::send_flags::sndmore);
             publisher.send(ack_msg, zmq::send_flags::none);
 
-            cout << "[SUBSCRIBER]: Sent " << msg_text << " to " << RESPONSE_TOPIC << endl;
+            cout << "[SUBSCRIBER]: Sent ACK to response topic" << endl;
           }
         }
       }

@@ -35,7 +35,7 @@ int main(int argc, char *argv[])
         // The port number here is the XSUB port of the Msg Proxy service (9200)
         xpub_socket.bind(xpub_endpoint);
         xpub_socket.setsockopt(ZMQ_XPUB_VERBOSER, 1);
-        xpub_socket.setsockopt(ZMQ_XPUB_WELCOME_MSG, WELCOME_MESSAGE.c_str());
+        xpub_socket.setsockopt(ZMQ_XPUB_WELCOME_MSG, WELCOME_TOPIC.c_str(), WELCOME_TOPIC.length());
     }
     catch (zmq::error_t e)
     {

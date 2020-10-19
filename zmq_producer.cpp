@@ -17,9 +17,6 @@ using namespace std;
     show how to used this in C++ (easier for the threading).
 */
 
-std::string SEND_TOPIC = "interesting_topic";
-std::string RESPONSE_TOPIC = "response_topic";
-
 int main(int argc, char *argv[])
 {
   // "You should create and use exactly one context in your process."
@@ -48,7 +45,7 @@ int main(int argc, char *argv[])
   zmq::socket_t subscriber(context, ZMQ_SUB);
   try
   {
-    subscriber.setsockopt(ZMQ_SUBSCRIBE, WELCOME_MESSAGE.c_str(), WELCOME_MESSAGE.length());
+    subscriber.setsockopt(ZMQ_SUBSCRIBE, WELCOME_TOPIC.c_str(), WELCOME_TOPIC.length());
     subscriber.connect(sub_transport);
     subscriber.setsockopt(ZMQ_SUBSCRIBE, RESPONSE_TOPIC.c_str(), RESPONSE_TOPIC.length());
 
@@ -70,7 +67,19 @@ int main(int argc, char *argv[])
 
     while (true)
     {
+      // first part of msg is the topic
+      zmq::message_t topic_msg(TOPIC_LENGTH);
+      subscriber.recv(topic_msg, zmq::recv_flags::none);
+      std::string topic_msg_txt;
+      topic_msg_txt.assign(static_cast<char *>(topic_msg.data()), topic_msg.size());
+
+      if (topic_msg_txt == WELCOME_TOPIC) {
+        cout << "[PUBLISHER]: Welcome message recved. Okay to do stuff" << endl;
+        continue;
+      }
+
       int recvMore = 1;
+      subscriber.getsockopt(ZMQ_RCVMORE, &recvMore, &int_size);
       while (recvMore)
       {
         zmq::message_t msg;
@@ -86,8 +95,8 @@ int main(int argc, char *argv[])
 
   for (auto i = 0; i < 20; i++)
   {
-    zmq::message_t topic_msg(SEND_TOPIC.length());
-    memcpy(topic_msg.data(), SEND_TOPIC.c_str(), SEND_TOPIC.length());
+    zmq::message_t topic_msg(RECEIVE_TOPIC.length());
+    memcpy(topic_msg.data(), RECEIVE_TOPIC.c_str(), RECEIVE_TOPIC.length());
 
     std::string msg_text = "Hello World!";
     zmq::message_t msg(msg_text.length());
@@ -97,7 +106,7 @@ int main(int argc, char *argv[])
     publisher.send(topic_msg, zmq::send_flags::sndmore);
     publisher.send(msg, zmq::send_flags::none);
 
-    cout << "[PUBLISHER]: Sent " << msg_text << " to " << SEND_TOPIC << endl;
+    cout << "[PUBLISHER]: Sent " << msg_text << " to µXLink receive topic" << endl;
 
     // add some delay
     std::this_thread::sleep_for(std::chrono::seconds(5));
