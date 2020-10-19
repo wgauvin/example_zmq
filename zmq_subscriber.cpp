@@ -5,6 +5,8 @@
 #include <thread>
 #include <zmq.hpp>
 
+#include "common.h"
+
 using namespace std;
 
 /*
@@ -15,30 +17,34 @@ using namespace std;
     show how to used this in C++ (easier for the threading).
 */
 
-std::string WELCOME_MESSAGE = "WELCOME";
-std::string RECEIVE_TOPIC  = "interesting_topic";
+std::string RECEIVE_TOPIC = "interesting_topic";
 std::string RESPONSE_TOPIC = "response_topic";
 
-int main(int argc, char *argv[]) {
+int main(int argc, char *argv[])
+{
   // "You should create and use exactly one context in your process."
   zmq::context_t context(2);
 
   // the main thread runs the publisher and sends messages periodically
   zmq::socket_t publisher(context, ZMQ_PUB);
-  std::string pub_transport("tcp://localhost:9200");
-  try{
+  std::string pub_transport(XSUB_ENDPOINT);
+  try
+  {
     // The port number here is the XSUB port of the Msg Proxy service (9200)
     publisher.connect(pub_transport);
-  } catch (zmq::error_t e) {
+  }
+  catch (zmq::error_t e)
+  {
     cerr << "Error connection to " << pub_transport << ". Error is: " << e.what() << endl;
     exit(1);
   }
-  
+
   // in a seperate thread, poll the socket until a message is ready. when a
   // message is ready, receive it, and print it out. then, start over.
   zmq::socket_t subscriber(context, ZMQ_SUB);
-  std::string sub_transport("tcp://localhost:9210");
-  try {
+  std::string sub_transport(XPUB_ENDPOINT);
+  try
+  {
     // The subscriber socket
     // The port number here is the XSUB port of the Msg Proxy service (9210)
     subscriber.setsockopt(ZMQ_SUBSCRIBE, WELCOME_MESSAGE.c_str(), WELCOME_MESSAGE.length());
@@ -47,7 +53,9 @@ int main(int argc, char *argv[]) {
 
     // helps with slow connectors!
     std::this_thread::sleep_for(std::chrono::milliseconds(1));
-  } catch (zmq::error_t e) {
+  }
+  catch (zmq::error_t e)
+  {
     cerr << "Error connection to " << sub_transport << ". Error is: " << e.what() << endl;
     exit(1);
   }
@@ -63,43 +71,47 @@ int main(int argc, char *argv[]) {
 
     size_t int_size = sizeof(int);
 
-    while(true) {
-        
-        zmq::poll(p.data(), 1, -1);
-	if (p[0].revents & ZMQ_POLLIN) {
+    while (true)
+    {
 
-            int recvMore = 1;
-            while (recvMore) {
-                zmq::message_t msg;
-                subscriber.recv(msg, zmq::recv_flags::none);
-                std::string msg_txt;
-                msg_txt.assign(static_cast<char *>(msg.data()), msg.size());
-                cout << "[SUBSCRIBER]: " << msg_txt << endl;
+      zmq::poll(p.data(), 1, -1);
+      if (p[0].revents & ZMQ_POLLIN)
+      {
 
-                subscriber.getsockopt(ZMQ_RCVMORE, &recvMore, &int_size);
+        int recvMore = 1;
+        while (recvMore)
+        {
+          zmq::message_t msg;
+          subscriber.recv(msg, zmq::recv_flags::none);
+          std::string msg_txt;
+          msg_txt.assign(static_cast<char *>(msg.data()), msg.size());
+          cout << "[SUBSCRIBER]: " << msg_txt << endl;
 
-                if (!recvMore) {
-		    cout << "[SUBSCRIBER]: Checking '" << msg_txt << "' equals WELCOME. It's length is " << msg_txt.length() << endl;
-		    if (msg_txt == "WELCOME") {
-                        cout << "[SUBSCRIBER]: Welcome message recved. Okay to do stuff";
-		        continue;
-		    }
-                    zmq::message_t topic_msg(RESPONSE_TOPIC.length());
-                    memcpy(topic_msg.data(), RESPONSE_TOPIC.c_str(), RESPONSE_TOPIC.length());
-                
-                    zmq::message_t ack_msg(3);
-                    std::string msg_text = "ACK";
-                    memcpy(ack_msg.data(), msg_text.c_str(), msg_text.length()); 
+          subscriber.getsockopt(ZMQ_RCVMORE, &recvMore, &int_size);
 
-                    publisher.send(topic_msg, zmq::send_flags::sndmore);
-                    publisher.send(ack_msg, zmq::send_flags::none);
-
-                    cout << "[SUBSCRIBER]: Sent " << msg_text << " to " << RESPONSE_TOPIC << endl;
-                }
+          if (!recvMore)
+          {
+            // This isn't working! 
+            if (msg_txt == "WELCOME")
+            {
+              cout << "[SUBSCRIBER]: Welcome message recved. Okay to do stuff";
+              continue;
             }
-	}
-    }
+            zmq::message_t topic_msg(RESPONSE_TOPIC.length());
+            memcpy(topic_msg.data(), RESPONSE_TOPIC.c_str(), RESPONSE_TOPIC.length());
 
+            zmq::message_t ack_msg(3);
+            std::string msg_text = "ACK";
+            memcpy(ack_msg.data(), msg_text.c_str(), msg_text.length());
+
+            publisher.send(topic_msg, zmq::send_flags::sndmore);
+            publisher.send(ack_msg, zmq::send_flags::none);
+
+            cout << "[SUBSCRIBER]: Sent " << msg_text << " to " << RESPONSE_TOPIC << endl;
+          }
+        }
+      }
+    }
   });
 
   subs_thread.join();
