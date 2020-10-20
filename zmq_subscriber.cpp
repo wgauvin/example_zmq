@@ -69,50 +69,26 @@ int main(int argc, char *argv[])
       zmq::poll(p.data(), 1, -1);
       if (p[0].revents & ZMQ_POLLIN)
       {
-        // first part of msg is the topic
-        zmq::message_t topic_msg(TOPIC_LENGTH);
-        subscriber.recv(topic_msg, zmq::recv_flags::none);
-        std::string topic_msg_txt;
-        topic_msg_txt.assign(static_cast<char *>(topic_msg.data()), topic_msg.size());
+        multipart_msg_t msg;
 
-        if (topic_msg_txt == WELCOME_TOPIC) {
+        recv_multipart_msg(&subscriber, &msg);
+
+        if (msg.topic == WELCOME_TOPIC) {
           cout << "[SUBSCRIBER]: Welcome message recved. Okay to do stuff" << endl;
-
-          int recvMore;
-          subscriber.getsockopt(ZMQ_RCVMORE, &recvMore, &int_size);
-          if (recvMore) {
-            cout << "[SUBSCRIBER]: Welcome message has more though!" << endl;
-          }
-
           continue;
         }
 
-        int recvMore;
-        subscriber.getsockopt(ZMQ_RCVMORE, &recvMore, &int_size);
-        while (recvMore)
-        {
-          zmq::message_t msg;
-          subscriber.recv(msg, zmq::recv_flags::none);
-          std::string msg_txt;
-          msg_txt.assign(static_cast<char *>(msg.data()), msg.size());
-          cout << "[SUBSCRIBER]: Received '" << msg_txt << "' on request topic" << endl;
-
-          subscriber.getsockopt(ZMQ_RCVMORE, &recvMore, &int_size);
-          if (!recvMore)
-          {
-            zmq::message_t response_topic_msg(RESPONSE_TOPIC.length());
-            memcpy(response_topic_msg.data(), RESPONSE_TOPIC.c_str(), RESPONSE_TOPIC.length());
-
-            zmq::message_t ack_msg(3);
-            std::string ack_msg_text = "ACK";
-            memcpy(ack_msg.data(), ack_msg_text.c_str(), ack_msg_text.length());
-
-            publisher.send(response_topic_msg, zmq::send_flags::sndmore);
-            publisher.send(ack_msg, zmq::send_flags::none);
-
-            cout << "[SUBSCRIBER]: Sent ACK to response topic" << endl;
-          }
+        for (auto m : msg.msgs) {
+          cout << "[SUBSCRIBER]: Received '" << m << "' on request topic" << endl;
         }
+
+        multipart_msg_t ack_msg;
+        ack_msg.topic = RESPONSE_TOPIC;
+        ack_msg.msgs.push_back("ACK"s);
+
+        send_multipart_msg(&publisher, &ack_msg);
+
+        cout << "[SUBSCRIBER]: Sent ACK to response topic" << endl;
       }
     }
   });

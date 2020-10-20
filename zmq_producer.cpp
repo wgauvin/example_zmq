@@ -67,46 +67,33 @@ int main(int argc, char *argv[])
 
     while (true)
     {
-      // first part of msg is the topic
-      zmq::message_t topic_msg(TOPIC_LENGTH);
-      subscriber.recv(topic_msg, zmq::recv_flags::none);
-      std::string topic_msg_txt;
-      topic_msg_txt.assign(static_cast<char *>(topic_msg.data()), topic_msg.size());
+      multipart_msg_t curr_msg;
+      recv_multipart_msg(&subscriber, &curr_msg);
 
-      if (topic_msg_txt == WELCOME_TOPIC) {
+      if (curr_msg.topic == WELCOME_TOPIC)
+      {
         cout << "[PUBLISHER]: Welcome message recved. Okay to do stuff" << endl;
         continue;
       }
 
-      int recvMore = 1;
-      subscriber.getsockopt(ZMQ_RCVMORE, &recvMore, &int_size);
-      while (recvMore)
+      for (auto it : curr_msg.msgs)
       {
-        zmq::message_t msg;
-        subscriber.recv(msg, zmq::recv_flags::none);
-        std::string msg_txt;
-        msg_txt.assign(static_cast<char *>(msg.data()), msg.size());
-        cout << "[PUBLISHER]: Received " << msg_txt << endl;
-
-        subscriber.getsockopt(ZMQ_RCVMORE, &recvMore, &int_size);
+        cout << "[PUBLISHER]: Received " << it << endl;
       }
     }
   });
 
   for (auto i = 0; i < 20; i++)
   {
-    zmq::message_t topic_msg(RECEIVE_TOPIC.length());
-    memcpy(topic_msg.data(), RECEIVE_TOPIC.c_str(), RECEIVE_TOPIC.length());
+    multipart_msg_t msg;
+    msg.topic = RECEIVE_TOPIC;
 
     std::string msg_text = "Hello World!";
-    zmq::message_t msg(msg_text.length());
-    memcpy(msg.data(), msg_text.c_str(), msg_text.length());
+    msg.msgs.push_back(msg_text);
 
-    // need to send topic msg first, then actual message
-    publisher.send(topic_msg, zmq::send_flags::sndmore);
-    publisher.send(msg, zmq::send_flags::none);
+    send_multipart_msg(&publisher, &msg);
 
-    cout << "[PUBLISHER]: Sent " << msg_text << " to µXLink receive topic" << endl;
+    cout << "[PUBLISHER]: Sent " << msg_text << " to topic" << endl;
 
     // add some delay
     std::this_thread::sleep_for(std::chrono::seconds(5));
